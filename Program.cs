@@ -2,6 +2,7 @@
 using System.IO;
 using System.Collections.Generic;
 using Newtonsoft.Json;
+using System.Text;
 
 public class Program
 {
@@ -29,10 +30,14 @@ public class Program
         Directory.CreateDirectory(salesTotalDir);
 
         // Calculate the sales total and write it to a file
-        var salesTotal = CalculateSalesTotal(salesFiles);
-        File.WriteAllText(Path.Combine(salesTotalDir, "totals.txt"), $"{salesTotal}{Environment.NewLine}");
+        double totalSales = CalculateSalesTotal(salesFiles, out Dictionary<string, (string FolderName, double Total)> salesDetails);
+        File.WriteAllText(Path.Combine(salesTotalDir, "totals.txt"), $"{totalSales}{Environment.NewLine}");
 
-        Console.WriteLine($"Sales total calculated: {salesTotal:F2}");
+        Console.WriteLine($"Sales total calculated: {totalSales:F2}");
+
+        //Generate Sales Summary report
+        GenerateSalesSummaryReport(salesDetails, totalSales, Path.Combine(salesTotalDir, "SalesSummaryReport.txt"));
+        Console.WriteLine($"Sales summary report generated at: {salesTotalDir}");
     }
 
     public static IEnumerable<string> FindFiles(string folderPath)
@@ -54,9 +59,10 @@ public class Program
         return salesFiles;
     }
 
-    public static double CalculateSalesTotal(IEnumerable<string> salesFiles)
+    public static double CalculateSalesTotal(IEnumerable<string> salesFiles, out Dictionary<string, (string folderName, double Total)> salesDetails)
     {
-        double salesTotal = 0;
+        double totalSales = 0;
+        salesDetails = new Dictionary<string, (string folderName, double Total)>();
 
         // Read each file and accumulate the total
         foreach (var file in salesFiles)
@@ -69,8 +75,14 @@ public class Program
                 // Parse the contents as JSON
                 SalesData? data = JsonConvert.DeserializeObject<SalesData?>(salesJson);
 
+                // Extracting the folder name
+                string folderName = Path.GetFileName(Path.GetDirectoryName(file)) ?? "Unknown Folder";
+
                 // Add the amount found in the Total field to the salesTotal variable
-                salesTotal += data?.Total ?? 0;
+                double fileSalesTotal = data?.Total ?? 0;
+                salesDetails[file] = (folderName, fileSalesTotal);
+                totalSales += fileSalesTotal;
+
             }
             catch (Exception ex)
             {
@@ -78,8 +90,28 @@ public class Program
             }
         }
 
-        return salesTotal;
+        return totalSales;
     }
+
+    public static void GenerateSalesSummaryReport(Dictionary<string, (string FolderName, double Total)> salesDetails, double totalSales, string reportFilePath)
+    {
+        var reportBuilder = new StringBuilder();
+
+        reportBuilder.AppendLine("Sales Summary\n-----------------------------");
+        reportBuilder.AppendLine($"Total Sales: {totalSales:C}\nDetails:");
+
+        foreach (var entry in salesDetails)
+        {
+            string  fileName = Path.GetFileName(entry.Key); //this is to just get the file name
+            string folderName = entry.Value.FolderName;
+            double total = entry.Value.Total;
+            reportBuilder.AppendLine($" {folderName}/{fileName}: {total:C}");
+        }
+
+        //Finally I write the report to the file 
+        File.WriteAllText(reportFilePath, reportBuilder.ToString());
+    }
+
 
     // Record to represent the JSON structure
     public record SalesData(double Total);
